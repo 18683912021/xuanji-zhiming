@@ -3,12 +3,12 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "dev": "pnpm --filter @xuanji/web dev",
-    "build": "pnpm -r build",
-    "build:web": "pnpm --filter @xuanji/web build",
-    "build:mp-weixin": "pnpm --filter @xuanji/miniprogram build",
-    "dev:mp-weixin": "pnpm --filter @xuanji/miniprogram dev",
-    "typecheck": "pnpm -r typecheck",
-    "preview": "pnpm --filter @xuanji/web preview"
+    "dev": "pnpm --filter @xuanji/client dev",
+    "build": "pnpm build:web && pnpm build:mp-weixin",
+    "build:web": "pnpm --filter @xuanji/client build:web",
+    "build:mp-weixin": "pnpm --filter @xuanji/client build:mp-weixin",
+    "dev:mp-weixin": "pnpm --filter @xuanji/client dev:mp-weixin",
+    "typecheck": "pnpm --filter @xuanji/client typecheck",
+    "preview": "pnpm --filter @xuanji/client preview"
   }
 }

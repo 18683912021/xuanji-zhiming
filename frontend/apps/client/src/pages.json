@@ -1,0 +1,20 @@
+{
+  "pages": [
+    { "path": "pages/home/index", "style": { "navigationBarTitleText": "玄机知命" } },
+    { "path": "pages/explore/index", "style": { "navigationBarTitleText": "探索" } },
+    { "path": "pages/today/index", "style": { "navigationBarTitleText": "今日" } },
+    { "path": "pages/ai/index", "style": { "navigationBarTitleText": "AI 对话" } },
+    { "path": "pages/account/index", "style": { "navigationBarTitleText": "我的" } },
+    { "path": "pages/charts/index", "style": { "navigationBarTitleText": "命盘" } },
+    { "path": "pages/divination/index", "style": { "navigationBarTitleText": "占卜" } },
+    { "path": "pages/social/index", "style": { "navigationBarTitleText": "关系与消息" } },
+    { "path": "pages/commerce/index", "style": { "navigationBarTitleText": "权益与商城" } }
+  ],
+  "globalStyle": {
+    "navigationStyle": "custom",
+    "navigationBarTextStyle": "white",
+    "navigationBarBackgroundColor": "#100B1C",
+    "backgroundColor": "#100B1C",
+    "backgroundTextStyle": "light"
+  }
+}

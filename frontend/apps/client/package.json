@@ -1,0 +1,30 @@
+{
+  "name": "@xuanji/client",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "uni -p h5 --host 127.0.0.1",
+    "dev:mp-weixin": "uni -p mp-weixin",
+    "build:web": "uni build -p h5",
+    "build:mp-weixin": "uni build -p mp-weixin",
+    "typecheck": "vue-tsc --noEmit",
+    "preview": "vite preview --host 127.0.0.1 --outDir dist/build/h5"
+  },
+  "dependencies": {
+    "@dcloudio/uni-app": "3.0.0-5030420261029002",
+    "@dcloudio/uni-components": "3.0.0-5030420261029002",
+    "@dcloudio/uni-mp-weixin": "3.0.0-5030420261029002",
+    "@xuanji/theme": "workspace:*",
+    "lunar-typescript": "^1.8.7",
+    "vue": "~3.4.38",
+    "vue-i18n": "^9.14.5",
+    "@dcloudio/uni-h5": "3.0.0-5030420261029002"
+  },
+  "devDependencies": {
+    "@dcloudio/types": "^3.4.8",
+    "@dcloudio/vite-plugin-uni": "3.0.0-5030420261029002",
+    "typescript": "~5.7.3",
+    "vite": "5.2.8",
+    "vue-tsc": "^2.2.12"
+  }
+}
