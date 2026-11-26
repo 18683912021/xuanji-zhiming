@@ -1,0 +1,80 @@
+.cards-stage {
+  background: radial-gradient(ellipse at 50% 0%, #60427e35, transparent 70%), var(--curtain);
+}
+.tarot-deck {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: clamp(6px, 1.3vw, 12px);
+  margin: 15px 0;
+}
+.tarot-back {
+  display: grid;
+  place-items: center;
+  position: relative;
+  aspect-ratio: 2/3;
+  min-width: 0;
+  border: 1px solid #977145;
+  border-radius: 8px;
+  background: radial-gradient(ellipse at 40% 25%, #60427e8f, transparent 85%), var(--night);
+  color: var(--gold);
+  font: clamp(1rem, 3vw, 2.45rem) / 1 var(--serif);
+  transition:
+    transform 180ms,
+    border-color 180ms;
+}
+.tarot-back::after {
+  position: absolute;
+  content: '';
+  inset: 7%;
+  border: 1px solid #d6b66c53;
+  border-radius: 5px;
+  pointer-events: none;
+}
+.tarot-back:hover,
+.tarot-back[aria-pressed='true'] {
+  transform: translateY(-4px);
+  border-color: var(--gold);
+}
+.tarot-back[aria-pressed='true'] {
+  box-shadow: 0 0 0 2px var(--gold);
+}
+.card-order {
+  position: absolute;
+  inset: auto 0 12%;
+  font: 500 14px/1 var(--sans);
+  text-align: center;
+}
+.reading-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+  gap: 13px;
+}
+.reading-card {
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  text-align: center;
+}
+.reading-face {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  width: min(150px, 100%);
+  aspect-ratio: 2/3;
+  border: 1px solid #a98556;
+  border-radius: 9px;
+  background: radial-gradient(ellipse, #60427e85, var(--night) 78%);
+  color: var(--gold);
+}
+.reading-face em {
+  font: 500 clamp(1.6rem, 4vw, 2.4rem) / 1 var(--serif);
+  font-style: normal;
+}
+.reading-card strong {
+  color: var(--text);
+  font: 600 1.22rem/1.28 var(--serif);
+}
+.reading-card small {
+  color: var(--muted);
+  font-size: 13px;
+}

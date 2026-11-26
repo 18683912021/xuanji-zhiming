@@ -1,0 +1,101 @@
+@import '@xuanji/theme/tokens.css';
+
+page {
+  background: var(--night);
+  color: var(--text);
+  font-size: 30rpx;
+  line-height: 1.6;
+  font-family: system-ui, sans-serif;
+}
+.sheet {
+  padding: 36rpx 36rpx 56rpx;
+}
+.headline {
+  display: block;
+  font-family:
+    Songti SC,
+    STSong,
+    SimSun,
+    serif;
+  font-size: 58rpx;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.heading {
+  display: block;
+  font-family:
+    Songti SC,
+    STSong,
+    SimSun,
+    serif;
+  font-size: 38rpx;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.copy {
+  display: block;
+  color: var(--muted);
+  margin-top: 12rpx;
+}
+.gold {
+  color: var(--gold);
+}
+.card {
+  padding: 24rpx;
+  border: 1px solid var(--line);
+  border-radius: 22rpx;
+  background: var(--panel);
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+.cta {
+  margin: 0;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 88rpx;
+  padding: 12rpx 18rpx;
+  font-size: 29rpx;
+  font-weight: 600;
+  line-height: 1.35;
+  border-radius: 16rpx;
+  color: var(--night);
+  background: var(--gold-gradient);
+}
+.cta::after {
+  border: 0;
+}
+.cta.secondary {
+  color: var(--text);
+  border: 1px solid var(--violet);
+  background: var(--night);
+}
+.cta[disabled] {
+  color: var(--muted);
+  background: var(--raised);
+}
+.form-label {
+  display: block;
+  margin-bottom: 8rpx;
+  font-weight: 600;
+}
+.field {
+  width: 100%;
+  min-height: 88rpx;
+  box-sizing: border-box;
+  padding: 14rpx 17rpx;
+  color: var(--text);
+  background: var(--night);
+  border: 1px solid var(--violet);
+  border-radius: 14rpx;
+}
+.field.area {
+  min-height: 268rpx;
+}
+.placeholder {
+  color: var(--muted);
+}

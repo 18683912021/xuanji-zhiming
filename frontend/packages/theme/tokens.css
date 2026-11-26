@@ -1,0 +1,17 @@
+:root, page {
+  --night: #100b1c;
+  --curtain: #181124;
+  --panel: #21152f;
+  --raised: #302140;
+  --gold: #d6b66c;
+  --mist: #c5b6e2;
+  --violet: #8b69b7;
+  --deep-violet: #60427e;
+  --text: #f0eaf6;
+  --muted: #b9afc9;
+  --line: #4d3a60;
+  --error: #e7a5ba;
+  --serif: "Songti SC", "Noto Serif SC", "Noto Serif CJK SC", "STSong", SimSun, serif;
+  --sans: "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --gold-gradient: linear-gradient(113deg, #d6b66c, #f1dda2 45%, #b18a48);
+}

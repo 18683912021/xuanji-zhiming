@@ -1,0 +1,6 @@
+node_modules/
+dist/
+*.local
+.DS_Store
+.hbuilderx/
+project.private.config.json

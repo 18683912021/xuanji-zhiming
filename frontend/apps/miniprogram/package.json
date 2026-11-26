@@ -1,0 +1,26 @@
+{
+  "name": "@xuanji/miniprogram",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "uni -p mp-weixin",
+    "build": "uni build -p mp-weixin",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@dcloudio/uni-app": "3.0.0-5030420261029002",
+    "@dcloudio/uni-components": "3.0.0-5030420261029002",
+    "@dcloudio/uni-mp-weixin": "3.0.0-5030420261029002",
+    "@xuanji/theme": "workspace:*",
+    "lunar-typescript": "^1.8.7",
+    "vue": "~3.4.38",
+    "vue-i18n": "^9.14.5"
+  },
+  "devDependencies": {
+    "@dcloudio/types": "^3.4.8",
+    "@dcloudio/vite-plugin-uni": "3.0.0-5030420261029002",
+    "typescript": "~5.7.3",
+    "vite": "5.2.8",
+    "vue-tsc": "^2.2.12"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "xuanji-zhiming",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "pnpm --filter @xuanji/web dev",
+    "build": "pnpm -r build",
+    "build:web": "pnpm --filter @xuanji/web build",
+    "build:mp-weixin": "pnpm --filter @xuanji/miniprogram build",
+    "dev:mp-weixin": "pnpm --filter @xuanji/miniprogram dev",
+    "typecheck": "pnpm -r typecheck",
+    "preview": "pnpm --filter @xuanji/web preview"
+  }
+}
