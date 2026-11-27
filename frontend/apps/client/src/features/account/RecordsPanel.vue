@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import AppIcon from '../../components/AppIcon.vue'
 import AppSwitch from '../../components/AppSwitch.vue'
 import NavLink from '../../components/NavLink.vue'
@@ -8,16 +8,22 @@ import DateField from '../../components/DateField.vue'
 import SelectField from '../../components/SelectField.vue'
 import SectionHeading from '../../components/SectionHeading.vue'
 import {
+  account,
   createShare,
+  deleteJournal,
+  refreshPersonal,
+  storeJournal,
   favorites,
   journal,
   shares,
   toggleFavorite,
   availableProfiles,
   type JournalEntry,
+  type SharedItem,
 } from './state'
 import { sessions, reports, roleForReading } from '../ai/state'
-import { readings, updateReading } from '../divination/records'
+import { api, apiMessage, live, restoreIdentity } from '../../shared/api'
+import { fetchReading, readings, refreshReadings, removeReading, updateReading } from '../divination/records'
 import { cards } from '../divination/tarot'
 import { isYin, isMoving, yaoLabels } from '../divination/liuyao'
 import { events } from '../calendar/events'
@@ -32,6 +38,8 @@ const record = computed(() => readings.state.value.find((item) => item.id === pr
 const report = computed(() => reports.state.value.find((item) => item.id === props.query.report))
 const note = ref(record.value?.note || '')
 const noteStatus = ref('')
+const actionPending = ref(false)
+watch(() => record.value?.id, () => { note.value = record.value?.note || '' })
 const favoriteId = computed(() => 'reading-' + (record.value?.id || ''))
 const isFavorite = computed(() => favorites.state.value.some((item) => item.id === favoriteId.value))
 const recordOptions = computed(() => ['全部', ...new Set(readings.state.value.map((item) => item.kind))])
@@ -65,9 +73,9 @@ const recordReports = computed(() =>
 const currentEntry = computed(
   () =>
     journal.state.value.find((item) => item.id === props.query.id) ||
-    (!props.query.id &&
-      !props.query.source &&
-      journal.state.value.find((item) => item.date === props.query.date)),
+    (!props.query.id && !props.query.source
+      ? journal.state.value.find((item) => item.date === props.query.date)
+      : undefined),
 )
 const journalTitle = ref(currentEntry.value ? currentEntry.value.title : '')
 const journalContent = ref(currentEntry.value ? currentEntry.value.content : '')
@@ -85,7 +93,38 @@ const reminder = ref(currentEvent?.reminder || false)
 const birthday = ref(currentEvent?.birthday || false)
 const profileId = ref('')
 const isEvent = computed(() => props.query.kind === 'event')
-const shareTarget = computed(() => shares.state.value.find((item) => item.id === props.query.id))
+const ownedShare = computed(() => shares.state.value.find((item) => item.id === props.query.id))
+const fetchedShare = ref<SharedItem>()
+const shareError = ref('')
+const shareTarget = computed(() => fetchedShare.value || ownedShare.value)
+
+interface ApiShare { id: string; title: string; summary: string; created_at: string; expires_at: string }
+function fromShare(value: ApiShare): SharedItem {
+  return { id: value.id, title: value.title, summary: value.summary, createdAt: value.created_at, expiresAt: value.expires_at, online: true }
+}
+
+onMounted(async () => {
+  if (!live) return
+  await restoreIdentity()
+  if (props.view === 'share' && props.query.id && /^[a-f0-9-]{36}$/i.test(props.query.id)) {
+    try {
+      fetchedShare.value = fromShare(await api<ApiShare>('/shares/' + props.query.id))
+    } catch (cause) {
+      shareError.value = apiMessage(cause)
+    }
+  } else if (props.query.id && (props.view === 'result' || props.view === 'share-preview')) {
+    await fetchReading(props.query.id).catch((cause) => { noteStatus.value = apiMessage(cause) })
+  } else if (props.view === 'records') {
+    void refreshReadings().catch((cause) => { noteStatus.value = apiMessage(cause) })
+  } else if (props.view.startsWith('journal')) {
+    await refreshPersonal()
+    if (currentEntry.value && !journalContent.value) {
+      journalTitle.value = currentEntry.value.title
+      journalContent.value = currentEntry.value.content
+      journalDate.value = currentEntry.value.date
+    }
+  }
+})
 const shareTitle = computed(
   () => report.value?.title || (isEvent.value ? '生日祝福' : record.value?.title?.split(' · ')[0]) || '',
 )
@@ -102,18 +141,40 @@ const shareSummary = computed(() =>
             .join('、')
         : record.value?.lines
           ? record.value.summary
-          : '本次完成了' + shareTitle.value + '体验。',
+          : record.value?.kind === 'oracle' ? record.value.summary : '本次完成了' + shareTitle.value + '体验。',
 )
 function options(values: string[]) {
   return values.map((value) => ({ value, label: value }))
 }
 
-function saveReading() {
-  if (record.value && updateReading(record.value.id, { saved: true })) toast('结果已保存在本机。')
+function promptLogin(view: string) {
+  go(destination('login', undefined, { nextView: view, id: props.query.id, source: props.query.source }))
 }
-function saveNote() {
-  if (record.value && updateReading(record.value.id, { note: note.value.trim(), saved: true }))
+async function saveReading() {
+  if (!record.value || actionPending.value) return
+  if (record.value.online && !account.state.value) return promptLogin('result')
+  actionPending.value = true
+  try {
+    await updateReading(record.value.id, { saved: true })
+    toast('结果已保存。')
+  } catch (cause) {
+    toast(apiMessage(cause))
+  } finally {
+    actionPending.value = false
+  }
+}
+async function saveNote() {
+  if (!record.value || actionPending.value) return
+  if (record.value.online && !account.state.value) return promptLogin('result')
+  actionPending.value = true
+  try {
+    await updateReading(record.value.id, { note: note.value.trim(), saved: true })
     noteStatus.value = '笔记已保存。'
+  } catch (cause) {
+    noteStatus.value = apiMessage(cause)
+  } finally {
+    actionPending.value = false
+  }
 }
 function favoriteReading() {
   if (record.value)
@@ -126,30 +187,45 @@ function favoriteReading() {
 function deleteReading() {
   const id = record.value?.id
   if (!id) return
-  confirmAction('删除体验', '删除本机结果及笔记。已保存的报告和历史消息保留原摘要。', () => {
-    if (readings.write(readings.state.value.filter((item) => item.id !== id)))
-      go(destination('account', 'records'), 'replace')
+  confirmAction('删除体验', '删除当前结果及笔记。', async () => {
+    try {
+      if (await removeReading(id)) go(destination('account', 'records'), 'replace')
+    } catch (cause) {
+      toast(apiMessage(cause))
+    }
   })
 }
-function saveJournal() {
-  if (!journalContent.value.trim()) return
+async function saveJournal() {
+  if (!journalContent.value.trim() || actionPending.value) return
+  if (live && !account.state.value) return promptLogin('journal-edit')
   const entry: JournalEntry = {
-    id: (currentEntry.value && currentEntry.value.id) || makeId(),
+    id: currentEntry.value?.id || makeId(),
     title: journalTitle.value.trim() || journalContent.value.trim().slice(0, 18),
     content: journalContent.value.trim(),
     updated: dateKey(),
-    date: journalDate.value,
+    date: live && currentEntry.value ? currentEntry.value.date : journalDate.value,
     sourceId: linkedRecord.value?.id,
   }
-  if (journal.write([entry, ...journal.state.value.filter((item) => item.id !== entry.id)]))
-    go(destination('account', 'journal-entry', { id: entry.id }), 'replace')
+  actionPending.value = true
+  try {
+    const saved = await storeJournal(entry, Boolean(linkedRecord.value?.online))
+    go(destination('account', 'journal-entry', { id: saved.id }), 'replace')
+  } catch (cause) {
+    toast(apiMessage(cause))
+  } finally {
+    actionPending.value = false
+  }
 }
 function removeJournal() {
-  const id = currentEntry.value && currentEntry.value.id
-  if (!id) return
-  confirmAction('删除日记', '这条私有日记会从本机删除。', () => {
-    if (journal.write(journal.state.value.filter((item) => item.id !== id)))
+  const entry = currentEntry.value
+  if (!entry) return
+  confirmAction('删除日记', '删除这条私人日记。', async () => {
+    try {
+      await deleteJournal(entry)
       go(destination('account', 'journal'), 'replace')
+    } catch (cause) {
+      toast(apiMessage(cause))
+    }
   })
 }
 function fromBirth(id: string) {
@@ -188,10 +264,37 @@ function removeEvent() {
 function daysUntil(date: string) {
   return Math.round((parseDate(date).getTime() - parseDate(dateKey()).getTime()) / 86400000)
 }
-function publishShare() {
-  if (!canShare.value) return
-  const id = createShare(shareTitle.value, shareSummary.value)
-  if (id) go(destination('account', 'share', { id }))
+async function publishShare() {
+  if (!canShare.value || actionPending.value) return
+  if (record.value?.online && !account.state.value) return promptLogin('share-preview')
+  actionPending.value = true
+  try {
+    let id
+    if (record.value?.online) {
+      const item = fromShare(await api<ApiShare>('/shares', { method: 'POST', body: { reading_id: record.value.id } }))
+      shares.write([item, ...shares.state.value])
+      id = item.id
+    } else id = createShare(shareTitle.value, shareSummary.value)
+    if (id) go(destination('account', 'share', { id }))
+  } catch (cause) {
+    toast(apiMessage(cause))
+  } finally {
+    actionPending.value = false
+  }
+}
+function revokeShare() {
+  const item = ownedShare.value
+  if (!item) return
+  confirmAction('撤回分享', '撤回后，原链接失效。', async () => {
+    try {
+      if (item.online) await api('/shares/' + item.id, { method: 'DELETE' })
+      shares.write(shares.state.value.filter((value) => value.id !== item.id))
+      fetchedShare.value = undefined
+      shareError.value = '分享已撤回。'
+    } catch (cause) {
+      toast(apiMessage(cause))
+    }
+  })
 }
 function copyShare() {
   if (!shareTarget.value) return
@@ -390,7 +493,7 @@ function copyShare() {
     </template>
     <template v-else-if="view === 'journal-edit'">
       <view class="panel stack">
-        <DateField v-model="journalDate" label="日期" /><view
+        <text v-if="live && currentEntry" class="muted">{{ displayDate(currentEntry.date) }}</text><DateField v-else v-model="journalDate" label="日期" /><view
           ><text class="field-label">标题</text
           ><input v-model="journalTitle" class="field" maxlength="40" placeholder="给记录起个名字"
         /></view>
@@ -476,7 +579,7 @@ function copyShare() {
         <text class="panel-head gold">{{ shareTitle }}</text
         ><text>{{ shareSummary }}</text>
         <text class="notice">仅分享上面的摘要。出生资料、原问题、照片和会话都不会进入分享。</text>
-        <button class="btn primary" @tap="publishShare">确认并生成 Mock 分享</button>
+        <button class="btn primary" @tap="publishShare">{{ record?.online ? '确认并生成分享链接' : '生成本机预览' }}</button>
         <NavLink class="link" :to="destination('account', 'shares')">管理已有分享 ›</NavLink> </view
       ><text v-else class="panel muted">找不到用于分享的资料。</text>
     </template>
@@ -496,23 +599,14 @@ function copyShare() {
       <view v-if="shareTarget" class="panel stack"
         ><text class="panel-head gold">{{ shareTarget.title }}</text
         ><text>{{ shareTarget.summary }}</text>
-        <text class="muted small">Mock 分享页面 · {{ shareTarget.createdAt }} · 本机可见</text>
+        <text class="muted small">{{ shareTarget.online ? '分享有效至 ' + displayDate(shareTarget.expiresAt || '') : '本机分享预览' }}</text>
         <view class="actions"
-          ><button class="btn primary" @tap="copyShare">复制分享入口</button>
-          <button
-            class="btn"
-            @tap="
-              confirmAction('撤回分享', '撤回后，该摘要入口会失效。', () =>
-                shares.write(shares.state.value.filter((item) => item.id !== shareTarget?.id)),
-              )
-            "
-          >
-            撤回分享
-          </button></view
+          ><button v-if="shareTarget.online" class="btn primary" @tap="copyShare">复制分享入口</button>
+          <button v-if="ownedShare" class="btn" @tap="revokeShare">撤回分享</button></view
         >
       </view>
       <view v-else class="panel stack"
-        ><text class="muted">这份摘要当前不可用。</text
+        ><text class="muted">{{ shareError || '这份摘要当前不可用。' }}</text
         ><NavLink class="btn" :to="destination('home')">回到首页</NavLink></view
       >
     </template>

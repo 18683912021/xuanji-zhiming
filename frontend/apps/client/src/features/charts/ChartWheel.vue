@@ -6,6 +6,7 @@ defineProps<{
   data: ReturnType<typeof chartFixture>
   second?: ReturnType<typeof chartFixture>
   title: string
+  cusps?: number[]
 }>()
 function point(degree: number, radius: number) {
   const angle = ((degree - 90) * Math.PI) / 180
@@ -15,7 +16,7 @@ defineOptions({ options: { virtualHost: true } })
 </script>
 
 <template>
-  <view class="wheel" aria-label="星盘示例图">
+  <view class="wheel" :aria-label="cusps ? '本命星盘' : '星盘示例图'">
     <view class="ring rim"></view>
     <view class="ring middle"></view>
     <view class="ring inner"></view>
@@ -25,8 +26,8 @@ defineOptions({ options: { virtualHost: true } })
       class="rim-tick"
       :style="{ transform: 'rotate(' + tick * 10 + 'deg)' }"
     ></view>
-    <view v-for="n in 12" :key="n" class="spoke" :style="{ transform: 'rotate(' + n * 30 + 'deg)' }"></view>
-    <text v-for="(sign, index) in signs" :key="sign.id" class="wheel-sign" :style="point(index * 30, 44)">{{
+    <view v-for="degree in (cusps || Array.from({ length: 12 }, (_, index) => index * 30))" :key="degree" class="spoke" :style="{ transform: 'rotate(' + degree + 'deg)' }"></view>
+    <text v-for="(sign, index) in signs" :key="sign.id" class="wheel-sign" :style="point(index * 30 + 15, 44)">{{
       sign.glyph
     }}</text>
     <text

@@ -195,6 +195,9 @@ function choose(value: number) {
 function restart() {
   if (test.write({ answers: [], current: 0, finished: false })) testing.value = true
 }
+async function saveMbti() {
+  if (await updateAccount({ mbti: type.value, publicMbti: true })) toast('已写入个人资料')
+}
 function saveTest() {
   if (!test.state.value.finished) return
   const existing = type.value
@@ -397,7 +400,7 @@ function saveImageReading() {
           <button
             v-if="account.state.value"
             class="btn"
-            @tap="updateAccount({ mbti: type, publicMbti: true }) && toast('已写入公开资料')"
+            @tap="saveMbti"
           >
             写入公开资料
           </button></view

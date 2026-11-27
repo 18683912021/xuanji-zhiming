@@ -1,4 +1,5 @@
-import { dateKey, localStore } from '../../shared/storage'
+import { dateKey } from '../../shared/storage'
+import { accountStore } from '../../shared/api'
 
 export interface Person {
   id: string
@@ -83,14 +84,14 @@ export interface Invite {
   direction: 'inbound' | 'outbound'
   status: 'pending' | 'accepted' | 'revoked' | 'declined'
 }
-export const connections = localStore('social-connections', {
+export const connections = accountStore('social-connections', {
   following: [] as string[],
   blocked: [] as string[],
   liked: [] as string[],
   skipped: [] as string[],
   matching: false,
 })
-export const posts = localStore<SocialPost[]>('social-posts', [
+export const posts = accountStore<SocialPost[]>('social-posts', [
   {
     id: 'post-lin',
     user: 'lin',
@@ -116,7 +117,7 @@ export const posts = localStore<SocialPost[]>('social-posts', [
     liked: false,
   },
 ])
-export const rooms = localStore<Room[]>('social-rooms', [
+export const rooms = accountStore<Room[]>('social-rooms', [
   {
     user: 'lin',
     unread: true,
@@ -125,7 +126,7 @@ export const rooms = localStore<Room[]>('social-rooms', [
     ],
   },
 ])
-export const notices = localStore<Notice[]>('social-notices', [
+export const notices = accountStore<Notice[]>('social-notices', [
   {
     id: 'n1',
     title: '顾宁关注了你',
@@ -141,7 +142,7 @@ export const notices = localStore<Notice[]>('social-notices', [
     unread: false,
   },
 ])
-export const invites = localStore<Invite[]>('social-invites', [
+export const invites = accountStore<Invite[]>('social-invites', [
   {
     id: 'inv1',
     user: 'mu',

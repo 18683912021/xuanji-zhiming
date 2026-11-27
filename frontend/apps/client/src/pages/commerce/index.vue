@@ -34,7 +34,7 @@ const titles: Record<string, string> = {
   order: '模拟订单详情',
   payment: '支付说明',
 }
-const view = computed(() => (query.value.view && query.value.view in titles ? query.value.view : 'index'))
+const view = computed(() => (query.value.view && Object.prototype.hasOwnProperty.call(titles, query.value.view) ? query.value.view : 'index'))
 const product = computed(() => products.find((item) => item.id === query.value.id))
 const spec = ref('')
 const quantity = ref(1)

@@ -37,7 +37,7 @@ const titles: Record<string, string> = {
   blocks: '已拉黑的用户',
 }
 const query = ref<Query>({})
-const view = computed(() => (query.value.view && query.value.view in titles ? query.value.view : 'index'))
+const view = computed(() => (query.value.view && Object.prototype.hasOwnProperty.call(titles, query.value.view) ? query.value.view : 'index'))
 const tab = ref('私聊')
 const relationTab = ref('我的关注')
 const matchesFilter = ref('')

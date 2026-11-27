@@ -14,4 +14,11 @@
   --serif: "Songti SC", "Noto Serif SC", "Noto Serif CJK SC", "STSong", SimSun, serif;
   --sans: "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
   --gold-gradient: linear-gradient(113deg, #d6b66c, #f1dda2 45%, #b18a48);
+  --gold-grain: repeating-linear-gradient(137deg, #ffeab032 0 0.5px, transparent 0.85px 2.6px);
+  --gold-foil:
+    var(--gold-grain),
+    radial-gradient(ellipse at 26% 0%, #fff2bcce, transparent 51%),
+    radial-gradient(ellipse at 82% 105%, #793e1c5e, transparent 47%),
+    linear-gradient(115deg, #b5803f, #f1ca79 29%, #ffe09a 54%, #ca903f 87%, #ae7431);
+  --gold-rule: linear-gradient(90deg, transparent, #9a6b3e 18%, #f5d598 50%, #a87b48 82%, transparent);
 }

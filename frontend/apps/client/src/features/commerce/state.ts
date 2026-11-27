@@ -1,4 +1,5 @@
-import { dateKey, localStore } from '../../shared/storage'
+import { dateKey } from '../../shared/storage'
+import { accountStore } from '../../shared/api'
 
 export interface Product {
   id: string
@@ -55,14 +56,14 @@ export interface Order {
   createdAt: string
   status: '模拟待确认' | '模拟已确认' | '已取消' | '模拟售后'
 }
-export const wallet = localStore('wallet', {
+export const wallet = accountStore('wallet', {
   balance: 20,
   lastCheckIn: '',
   lastInvite: '',
   ledger: [{ id: 'initial', delta: 20, title: '体验赠送', day: dateKey() }],
 })
-export const productFavorites = localStore<string[]>('product-favorites', [])
-export const addresses = localStore<Address[]>('demo-addresses', [
+export const productFavorites = accountStore<string[]>('product-favorites', [])
+export const addresses = accountStore<Address[]>('demo-addresses', [
   { id: 'demo', name: '演示收件人', district: '示例城市', line: '样例路 01 号', isDefault: true },
 ])
-export const orders = localStore<Order[]>('demo-orders', [])
+export const orders = accountStore<Order[]>('demo-orders', [])

@@ -1,12 +1,26 @@
+<script lang="ts">
+// Switching main sections relaunches the page and creates a new header.
+let previousHeaderTab: number | undefined
+</script>
+
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import AppIcon from './AppIcon.vue'
 import NavLink from './NavLink.vue'
 import { account } from '../features/account/state'
 import { back, destination, type Section } from '../shared/navigation'
 
-const props = defineProps<{ section: Section; title?: string; subtitle?: string; detail?: boolean }>()
+const props = withDefaults(defineProps<{
+  section: Section
+  title?: string
+  subtitle?: string
+  detail?: boolean
+  entering?: boolean
+}>(), { entering: true })
 const menuOpen = ref(false)
+watch(() => props.entering, (entering) => {
+  if (!entering) menuOpen.value = false
+})
 const tabs = [
   { section: 'home', title: '首页', icon: 'home' },
   { section: 'explore', title: '探索', icon: 'explore' },
@@ -19,9 +33,9 @@ let capsulePadding = '0px'
 // #ifdef MP-WEIXIN
 const capsule = uni.getMenuButtonBoundingClientRect()
 if (capsule.top > 0) {
-  statusPadding = Math.max(0, capsule.top - (52 - capsule.height) / 2) + 'px'
+  statusPadding = Math.max(0, capsule.top - (56 - capsule.height) / 2) + 'px'
   capsulePadding = capsule.width + 12 + 'px'
-  if (uni.getWindowInfo().windowWidth < 360) {
+  if (uni.getWindowInfo().windowWidth - capsule.width < 270) {
     statusPadding = capsule.bottom + 4 + 'px'
     capsulePadding = '0px'
   }
@@ -34,6 +48,10 @@ const fallback: Partial<Record<Section, Section>> = {
   commerce: 'account',
 }
 const active = computed(() => fallback[props.section] || props.section)
+const activeTabIndex = computed(() => tabs.findIndex((item) => item.section === active.value))
+const startingTabIndex = previousHeaderTab ?? activeTabIndex.value
+onMounted(() => { previousHeaderTab = activeTabIndex.value })
+
 const sectionArtwork: Record<Section, string> = {
   home: 'home',
   explore: 'explore',
@@ -48,33 +66,47 @@ const sectionArtwork: Record<Section, string> = {
 </script>
 
 <template>
-  <view class="app-shell">
-    <view class="site-header" :style="{ paddingTop: statusPadding }">
+  <view class="app-shell" :class="{ 'home-shell': section === 'home' }" :style="{ '--status-padding': statusPadding }">
+    <view class="site-header brand-bar">
       <view class="header-inner" :style="{ paddingRight: capsulePadding }">
         <NavLink class="brand" :to="destination('home')" mode="reLaunch">
-          <AppIcon name="seal" class="brand-seal" /><text>玄机知命</text>
+          <AppIcon name="seal" class="brand-seal" /><text class="brand-lettering">玄机知命</text>
         </NavLink>
         <view class="desktop-tabs" aria-label="主导航">
-          <NavLink
-            v-for="item in tabs"
-            :key="item.section"
-            class="desktop-tab"
-            :class="{ active: item.section === active }"
-            :to="destination(item.section)"
-            mode="reLaunch"
-          >
-            {{ item.title }}
-          </NavLink>
+          <view class="desktop-tab-track">
+            <view
+              class="desktop-tab-indicator"
+              :class="{ sliding: startingTabIndex !== activeTabIndex }"
+              :style="{
+                width: `${100 / tabs.length}%`,
+                '--tab-start': `${startingTabIndex * 100}%`,
+                '--tab-end': `${activeTabIndex * 100}%`,
+              }"
+              aria-hidden="true"
+            />
+            <NavLink
+              v-for="item in tabs"
+              :key="item.section"
+              class="desktop-tab"
+              :class="{ active: item.section === active }"
+              :aria-current="item.section === active ? 'page' : undefined"
+              :to="destination(item.section)"
+              mode="reLaunch"
+            >
+              {{ item.title }}
+            </NavLink>
+          </view>
         </view>
         <view class="header-actions">
           <NavLink
-            class="header-login btn"
-            :to="destination('account', account.state.value ? undefined : 'login')"
+            class="header-login btn bar-control"
+            :to="destination(account.state.value ? 'account' : 'login')"
           >
             {{ account.state.value ? '我的' : '登录' }}
           </NavLink>
           <button
-            class="header-menu"
+            class="header-menu bar-control"
+            :class="{ expanded: menuOpen }"
             :aria-label="menuOpen ? '收起菜单' : '展开菜单'"
             :aria-expanded="menuOpen"
             @tap="menuOpen = !menuOpen"
@@ -83,11 +115,13 @@ const sectionArtwork: Record<Section, string> = {
           </button>
         </view>
       </view>
-      <view v-if="menuOpen" class="header-drawer">
+      <view class="header-drawer" :class="{ open: menuOpen }" :aria-hidden="!menuOpen" @tap="menuOpen = false">
         <NavLink
           v-for="item in tabs"
           :key="item.section"
           class="drawer-link"
+          :class="{ active: item.section === active }"
+          :aria-current="item.section === active ? 'page' : undefined"
           :to="destination(item.section)"
           mode="reLaunch"
         >
@@ -98,20 +132,22 @@ const sectionArtwork: Record<Section, string> = {
         >
       </view>
     </view>
-    <view v-if="title" class="page-heading content-width">
-      <view class="heading-text">
-        <button v-if="detail" class="back-link" @tap="back(destination(fallback[section] || section))">
-          ‹ 返回
-        </button>
-        <text class="page-title">{{ title }}</text>
-        <text v-if="subtitle" class="muted heading-copy">{{ subtitle }}</text>
+    <view :class="{ 'page-arrival': entering && section !== 'home' }">
+      <view v-if="title" class="page-heading content-width">
+        <view class="heading-text">
+          <button v-if="detail" class="back-link" @tap="back(destination(fallback[section] || section))">
+            ‹ 返回
+          </button>
+          <text class="page-title">{{ title }}</text>
+          <text v-if="subtitle" class="muted heading-copy">{{ subtitle }}</text>
+        </view>
+        <AppIcon :name="sectionArtwork[section]" class="page-ornament" />
       </view>
-      <AppIcon :name="sectionArtwork[section]" class="page-ornament" />
-    </view>
-    <slot />
-    <view class="site-footer content-width">
-      <text>玄机知命</text>
-      <NavLink class="link" :to="destination('account', 'settings')">设置与隐私</NavLink>
+      <slot />
+      <view class="site-footer content-width">
+        <text>玄机知命</text>
+        <NavLink class="link" :to="destination('account', 'settings')">设置与隐私</NavLink>
+      </view>
     </view>
     <view class="mobile-tabs" aria-label="主导航">
       <NavLink

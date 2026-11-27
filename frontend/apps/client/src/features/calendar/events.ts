@@ -1,4 +1,5 @@
-import { dateKey, localStore } from '../../shared/storage'
+import { dateKey } from '../../shared/storage'
+import { accountStore } from '../../shared/api'
 
 export interface CalendarEvent {
   id: string
@@ -8,7 +9,7 @@ export interface CalendarEvent {
   reminder: boolean
   birthday: boolean
 }
-export const events = localStore<CalendarEvent[]>('events', [])
+export const events = accountStore<CalendarEvent[]>('events', [])
 export function happensOn(event: CalendarEvent, value = dateKey()) {
   if (event.date === value) return true
   if (value < event.date) return false

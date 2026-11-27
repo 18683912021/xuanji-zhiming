@@ -1,20 +1,50 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import AppSwitch from '../../components/AppSwitch.vue'
 import NavLink from '../../components/NavLink.vue'
 import DateField from '../../components/DateField.vue'
 import SelectField from '../../components/SelectField.vue'
 import ToolCard from '../../components/ToolCard.vue'
-import { account, feedback, login, preferences, profiles, updateAccount, type BirthProfile } from './state'
+import { account, clearDemoAccount, deleteBirthProfile, feedback, logoutAccount, preferences, profiles, saveBirthProfile, updateAccount, type BirthProfile } from './state'
+import { apiMessage, authStatus, bindWechat, identity as signedIdentity, live } from '../../shared/api'
+import { clockOccurrences, timezones } from './birth'
 import { remaining } from '../ai/state'
 import { confirmAction, destination, go, toast, type Query } from '../../shared/navigation'
 import { dateKey, makeId } from '../../shared/storage'
 
 const props = defineProps<{ view: string; query: Query }>()
-const identity = ref('观星人')
-const method = ref('体验账号')
-const loggingIn = ref(false)
+const profilePending = ref(false)
+const wechatReady = ref(false)
+const bindingWechat = ref(false)
+watch(() => props.view, async (view) => {
+  if (!live || view !== 'settings') return
+  try {
+    const status = await authStatus()
+    wechatReady.value = status.wechat_login
+  } catch {
+    wechatReady.value = false
+  }
+}, { immediate: true })
+function linkWechat() {
+  if (bindingWechat.value) return
+  confirmAction('绑定微信账号', '确认将当前微信绑定到此账号。绑定后可在小程序用微信登录。', async () => {
+    if (bindingWechat.value) return
+    bindingWechat.value = true
+    try {
+      await bindWechat()
+      toast('微信账号已绑定。')
+    } catch (cause) {
+      toast(apiMessage(cause))
+    } finally {
+      bindingWechat.value = false
+    }
+  })
+}
 const edit = ref(account.state.value ? { ...account.state.value } : null)
+watch(() => account.state.value, (value) => {
+  if (!value) edit.value = null
+  else if (!edit.value) edit.value = { ...value }
+})
 const entry = computed(() => profiles.state.value.find((item) => item.id === props.query.id))
 const profile = ref<BirthProfile>(
   entry.value
@@ -27,11 +57,15 @@ const profile = ref<BirthProfile>(
         date: '',
         time: '',
         city: '',
-        timezone: 'UTC+08:00',
+        timezone: 'Asia/Shanghai',
+        occurrence: '',
         currentCity: '',
       },
 )
 const error = ref('')
+watch(entry, (value) => {
+  if (value && profile.value.id !== value.id) profile.value = { ...value }
+})
 const subject = ref('使用反馈')
 const feedbackText = ref('')
 const menu = [
@@ -50,51 +84,57 @@ const menu = [
 function options(values: string[]) {
   return values.map((value) => ({ value, label: value }))
 }
-function signIn() {
-  if (loggingIn.value || !identity.value.trim()) return
-  loggingIn.value = true
-  const demoIdentity = method.value === '微信体验' ? '微信体验用户' : identity.value.trim()
-  if (!login(demoIdentity)) {
-    loggingIn.value = false
+async function saveProfile() {
+  error.value = ''
+  if (live && !account.state.value) {
+    go(destination('login', undefined, { nextView: 'profile-edit', id: props.query.id }), 'replace')
     return
   }
-  const { next, nextView, id, role, source, profile, report } = props.query
-  if (next === 'ai')
-    go(destination('ai', nextView || 'new', { id, role, source, profile, report }), 'replace')
-  else go(destination('account', nextView || undefined, { id }), 'replace')
-}
-function saveProfile() {
-  error.value = ''
   if (!profile.value.name.trim() || !profile.value.date) {
     error.value = '请填写档案名称与出生日期。'
     return
   }
-  const item: BirthProfile = {
-    ...profile.value,
-    name: profile.value.name.trim(),
-    id: profile.value.id || makeId(),
-  }
-  if (profiles.write([item, ...profiles.state.value.filter((value) => value.id !== item.id)]))
+  if (profilePending.value) return
+  profilePending.value = true
+  try {
+    const item = await saveBirthProfile({ ...profile.value, name: profile.value.name.trim() })
     go(destination('account', 'profile', { id: item.id }), 'replace')
+  } catch (cause) {
+    error.value = apiMessage(cause)
+  } finally {
+    profilePending.value = false
+  }
 }
 function removeProfile() {
-  if (!entry.value) return
-  const id = entry.value.id
-  confirmAction('删除出生档案', '删除本机档案。已经保存的测算仍可查看当时的结果。', () => {
-    if (profiles.write(profiles.state.value.filter((item) => item.id !== id)))
+  const id = entry.value?.id
+  if (!id) return
+  confirmAction('删除出生档案', '已经保存的测算仍可查看当时的结果。', async () => {
+    try {
+      await deleteBirthProfile(id)
       go(destination('account', 'profiles'), 'replace')
+    } catch (cause) {
+      toast(apiMessage(cause))
+    }
   })
 }
-function logout() {
-  const current = account.state.value
-  if (current) uni.setStorageSync('xuanji:client:last-account', current)
-  if (account.write(null)) go(destination('account'), 'replace')
+async function logout() {
+  try {
+    const current = account.state.value
+    if (!live && current) uni.setStorageSync('xuanji:client:last-account', current)
+    await logoutAccount()
+    go(destination('account'), 'replace')
+  } catch (cause) {
+    toast(apiMessage(cause))
+  }
 }
 function deactivate() {
-  confirmAction('注销 Mock 账号', '移除本机登录信息。私人记录可在各自的详情页删除。', () => {
-    uni.removeStorageSync('xuanji:client:last-account')
-    if (account.write(null)) go(destination('account'), 'replace')
+  confirmAction('注销体验账号', '移除本机体验登录信息。', () => {
+    clearDemoAccount()
+    go(destination('account'), 'replace')
   })
+}
+async function saveAccount() {
+  if (edit.value && await updateAccount(edit.value)) toast('已保存个人资料。')
 }
 function sendFeedback() {
   if (!feedbackText.value.trim()) return
@@ -119,12 +159,12 @@ function sendFeedback() {
           <text class="panel-head">{{ account.state.value?.nickname || '你好，观星人' }}</text>
           <text class="muted">{{
             account.state.value
-              ? account.state.value.bio || '在这里管理本机体验资料。'
-              : '浏览公开内容，或用体验账号试用 AI 与个人资料。'
+              ? account.state.value.bio || '在这里管理你的体验资料。'
+              : '浏览公开内容，登录后可使用 AI 和保存档案。'
           }}</text>
           <view class="actions"
-            ><NavLink v-if="!account.state.value" class="btn primary" :to="destination('account', 'login')"
-              >体验登录</NavLink
+            ><NavLink v-if="!account.state.value" class="btn primary" :to="destination('login')"
+              >{{ live ? '登录或注册' : '体验登录' }}</NavLink
             >
             <NavLink v-else class="btn primary" :to="destination('account', 'public-edit')"
               >编辑个人资料</NavLink
@@ -135,7 +175,7 @@ function sendFeedback() {
               :to="destination('social', 'person', { id: 'self' })"
               >查看公开主页</NavLink
             >
-            <NavLink class="btn" :to="destination('account', 'records')">本机记录</NavLink></view
+            <NavLink class="btn" :to="destination('account', 'records')">体验记录</NavLink></view
           >
         </view>
         <view class="panel stack"
@@ -157,28 +197,6 @@ function sendFeedback() {
           :glyph="glyph"
           :to="to"
       /></view>
-    </template>
-    <template v-else-if="view === 'login'">
-      <view class="panel stack account-form">
-        <text class="panel-head">进入玄机知命</text
-        ><text class="notice">使用 Mock 账号继续。这里无需真实密码或短信验证码，数据保存在当前设备。</text>
-        <SelectField
-          v-model="method"
-          label="登录方式"
-          :options="options(['体验账号', '邮箱体验', '手机体验', '微信体验'])"
-        />
-        <view v-if="method !== '微信体验'"
-          ><text class="field-label">{{ method === '体验账号' ? '体验昵称' : '演示账号' }}</text
-          ><input v-model="identity" class="field" maxlength="40" placeholder="例如观星人"
-        /></view>
-        <button
-          class="btn primary"
-          :disabled="loggingIn || (method !== '微信体验' && !identity.trim())"
-          @tap="signIn"
-        >
-          登录体验
-        </button>
-      </view>
     </template>
     <template v-else-if="view === 'public-edit'">
       <view v-if="edit" class="panel stack account-form">
@@ -214,13 +232,13 @@ function sendFeedback() {
         <button
           class="btn primary"
           :disabled="!edit.nickname.trim()"
-          @tap="updateAccount(edit) && toast('已保存个人资料。')"
+          @tap="saveAccount"
         >
           保存个人资料
         </button>
       </view>
-      <NavLink v-else class="btn primary" :to="destination('account', 'login', { nextView: 'public-edit' })"
-        >先用体验账号登录</NavLink
+      <NavLink v-else class="btn primary" :to="destination('login', undefined, { nextView: 'public-edit' })"
+        >先登录账号</NavLink
       >
     </template>
     <template v-else-if="view === 'profiles'">
@@ -279,11 +297,14 @@ function sendFeedback() {
             :options="options(['暂不填写', '女', '男', '其他'])"
         /></view>
         <view class="cols-2"
-          ><DateField v-model="profile.date" label="出生日期" :end="dateKey()" /><DateField
+          ><DateField v-model="profile.date" label="出生日期" start="1901-01-01" :end="dateKey()" /><DateField
             v-model="profile.time"
             label="出生时刻（可选）"
             mode="time"
         /></view>
+        <SelectField v-if="live && profile.time" :model-value="profile.occurrence || ''"
+          label="夏令时回拨（出生时刻出现两次时填写）" :options="clockOccurrences"
+          @update:model-value="profile.occurrence = $event" />
         <view class="cols-2"
           ><view
             ><text class="field-label">出生城市</text
@@ -291,14 +312,14 @@ function sendFeedback() {
           ><SelectField
             v-model="profile.timezone"
             label="时区"
-            :options="options(['UTC+08:00', 'UTC+00:00', 'UTC+09:00', 'UTC-05:00'])"
+            :options="timezones"
         /></view>
         <view
           ><text class="field-label">现居城市（可选）</text
           ><input v-model="profile.currentCity" class="field" maxlength="36"
         /></view>
         <text v-if="error" class="error">{{ error }}</text
-        ><button class="btn primary" @tap="saveProfile">保存出生档案</button>
+        ><button class="btn primary" :disabled="profilePending" @tap="saveProfile">保存出生档案</button>
       </view>
     </template>
     <template v-else-if="view === 'settings'">
@@ -330,13 +351,28 @@ function sendFeedback() {
         </view>
         <view class="panel stack">
           <text class="panel-head">账号与隐私</text
-          ><text class="notice">体验版 v0.1。数据保存在当前设备，换端后会使用各自的本机记录。</text>
+          ><text v-if="!live" class="notice">体验数据保存在当前设备。</text>
           <text v-if="account.state.value">当前账号 · {{ account.state.value.nickname }}</text>
-          <NavLink class="link" :to="destination('account', 'login')">Mock 账号登录或切换 ›</NavLink>
+          <template v-if="live && account.state.value">
+            <text class="muted">{{ signedIdentity?.username ? '用户名 · ' + signedIdentity.username : '用户名 · 未设置' }}</text>
+            <text v-if="signedIdentity?.is_admin" class="gold">账号角色 · 管理员</text>
+            <text class="muted">{{ signedIdentity?.email ? '邮箱 · ' + signedIdentity.email : '邮箱 · 未绑定' }}</text>
+            <text class="muted">{{ signedIdentity?.wechat_linked ? '微信 · 已绑定' : '微信 · 未绑定' }}</text>
+            <NavLink class="link" :to="destination('security', 'credentials')">
+              {{ signedIdentity?.username ? '更新密码 ›' : '设置跨端登录账号 ›' }}
+            </NavLink>
+            <NavLink v-if="signedIdentity?.password_set && !signedIdentity.email"
+              class="link" :to="destination('security', 'email')">绑定邮箱 ›</NavLink>
+            <!-- #ifdef MP-WEIXIN -->
+            <button v-if="wechatReady && !signedIdentity?.wechat_linked" class="btn" :disabled="bindingWechat"
+              @tap="linkWechat">绑定微信</button>
+            <!-- #endif -->
+          </template>
+          <NavLink v-if="!account.state.value" class="link" :to="destination('login')">登录 ›</NavLink>
           <NavLink class="link" :to="destination('account', 'support')">联系客服与使用反馈 ›</NavLink>
           <view v-if="account.state.value" class="actions"
             ><button class="btn" @tap="logout">退出登录</button
-            ><button class="btn" @tap="deactivate">注销体验账号</button></view
+            ><button v-if="!live" class="btn" @tap="deactivate">注销体验账号</button></view
           >
         </view>
       </view>

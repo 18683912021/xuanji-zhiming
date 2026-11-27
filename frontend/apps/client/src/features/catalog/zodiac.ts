@@ -1,4 +1,6 @@
-export const signs = [
+import { reactive } from 'vue'
+
+export const signs = reactive([
   {
     id: 'aries',
     name: '白羊座',
@@ -143,7 +145,7 @@ export const signs = [
     prompt: '给自己的感受起个名字，看看它和近况如何相连。',
     relationship: '听完对方的感受，再复述一次你听见的重点。',
   },
-]
+])
 export type Zodiac = (typeof signs)[number]
 export function signById(id?: string) {
   return signs.find((sign) => sign.id === id) ?? signs[0]!

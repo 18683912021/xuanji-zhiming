@@ -5,12 +5,14 @@ import NavLink from '../../components/NavLink.vue'
 import SelectField from '../../components/SelectField.vue'
 import SectionHeading from '../../components/SectionHeading.vue'
 import { destination, go } from '../../shared/navigation'
+import { apiMessage, live, requestId } from '../../shared/api'
+import { deviceTimezone } from '../account/birth'
 import { dateKey } from '../../shared/storage'
 import { signById, signs } from '../catalog/zodiac'
 import { answerPages, dreamTopics, houses, planets, planetThemes, sample, spreads, verses } from './content'
 import { cards, deal, type DrawnCard } from './tarot'
 import { castCoins, changed, hexagram, isMoving, yaoLabels, yaoNames, type Yao } from './liuyao'
-import { createReading, readings } from './records'
+import { createReading, performReading, readings, type Reading } from './records'
 import { liuyaoDraft as draft } from './draft'
 
 const props = defineProps<{ view: string; spread?: string; id?: string }>()
@@ -29,6 +31,25 @@ const topic = ref(dreamTopics[0]!)
 const drawnDice = ref<{ planet: number; sign: string; house: number }>()
 const answer = ref('')
 const captured = ref(false)
+const onlinePreview = ref<Reading>()
+const pending = ref(false)
+const error = ref('')
+let lastRequest: { data: string; id: string } | undefined
+
+async function execute(kind: 'tarot' | 'daily' | 'oracle' | 'liuyao' | 'dice' | 'book' | 'dream', payload: object) {
+  if (pending.value) return
+  const data = JSON.stringify([kind, payload])
+  if (lastRequest?.data !== data) lastRequest = { data, id: requestId() }
+  pending.value = true
+  error.value = ''
+  try {
+    return await performReading(kind, payload, lastRequest.id, deviceTimezone())
+  } catch (cause) {
+    error.value = apiMessage(cause)
+  } finally {
+    pending.value = false
+  }
+}
 const selectedCard = computed(() => Number(props.id || 0))
 const cardKeyword = ref('')
 const today = dateKey()
@@ -87,8 +108,14 @@ function renderTarot(picks: DrawnCard[], title: string, kind: string) {
   return item
 }
 
-function flip(random = false) {
-  if (captured.value || (!ready.value && !random)) return
+async function flip(random = false) {
+  if (captured.value || pending.value || (!ready.value && !random)) return
+  if (live) {
+    showRecord(await execute('tarot', {
+      spread_id: spread.value.id, question: question.value.trim(), positions: random ? undefined : selected.value,
+    }))
+    return
+  }
   const picked = random
     ? deck.value.slice(0, spread.value.positions.length)
     : selected.value.map((index) => deck.value[index]!)
@@ -101,8 +128,12 @@ function flip(random = false) {
   )
 }
 
-function flipDaily() {
-  if (daily.value || captured.value) return
+async function flipDaily() {
+  if (daily.value || captured.value || pending.value) return
+  if (live) {
+    if (await execute('daily', {})) captured.value = true
+    return
+  }
   const item = renderTarot([{ ...deck.value[0]!, position: '今日' }], '今日塔罗', 'daily')
   if (item) captured.value = true
 }
@@ -114,8 +145,17 @@ function addLine(value?: Yao) {
   lines.value = [...lines.value, cast.value]
 }
 
-function resolveHexagram() {
-  if (captured.value || lines.value.length !== 6) return
+async function resolveHexagram() {
+  if (captured.value || pending.value || lines.value.length !== 6) return
+  if (live) {
+    const item = await execute('liuyao', { lines: [...lines.value], question: question.value.trim() })
+    if (item) {
+      lines.value = []
+      question.value = ''
+      showRecord(item)
+    }
+    return
+  }
   const base = hexagram(lines.value)
   const moving = lines.value.flatMap((line, index) => (isMoving(line) ? [yaoNames[index]] : [])).join('、')
   const item = createReading({
@@ -141,8 +181,12 @@ function resolveHexagram() {
   }
 }
 
-function drawOracle() {
-  if (captured.value) return
+async function drawOracle() {
+  if (captured.value || pending.value) return
+  if (live) {
+    showRecord(await execute('oracle', { question: question.value.trim() || theme.value }))
+    return
+  }
   const value = sample(verses)
   showRecord(
     createReading({
@@ -159,8 +203,17 @@ function drawOracle() {
   )
 }
 
-function rollDice() {
-  if (captured.value) return
+async function rollDice() {
+  if (captured.value || pending.value) return
+  if (live) {
+    if (onlinePreview.value) lastRequest = undefined
+    const record = await execute('dice', { question: question.value.trim() })
+    if (record?.dice) {
+      onlinePreview.value = record
+      drawnDice.value = record.dice
+    }
+    return
+  }
   drawnDice.value = {
     planet: Math.floor(Math.random() * planets.length),
     sign: sample(signs).id,
@@ -168,7 +221,8 @@ function rollDice() {
   }
 }
 function saveDice() {
-  if (!drawnDice.value || captured.value) return
+  if (!drawnDice.value || captured.value || pending.value) return
+  if (onlinePreview.value) return showRecord(onlinePreview.value)
   const { planet, sign, house } = drawnDice.value
   showRecord(
     createReading(
@@ -189,12 +243,23 @@ function saveDice() {
   )
 }
 
-function openBook() {
+async function openBook() {
+  if (pending.value) return
+  if (live) {
+    if (onlinePreview.value) lastRequest = undefined
+    const record = await execute('book', { question: question.value.trim(), previous_answer: answer.value || undefined })
+    if (record) {
+      onlinePreview.value = record
+      answer.value = record.summary
+    }
+    return
+  }
   const options = answerPages.filter((page) => page !== answer.value)
   answer.value = sample(options)
 }
 function saveAnswer() {
-  if (captured.value || !answer.value) return
+  if (captured.value || !answer.value || pending.value) return
+  if (onlinePreview.value) return showRecord(onlinePreview.value)
   showRecord(
     createReading(
       {
@@ -210,8 +275,12 @@ function saveAnswer() {
   )
 }
 
-function saveDream() {
-  if (captured.value || !dream.value.trim()) return
+async function saveDream() {
+  if (captured.value || pending.value || !dream.value.trim()) return
+  if (live) {
+    showRecord(await execute('dream', { text: dream.value.trim(), mood: mood.value }))
+    return
+  }
   showRecord(
     createReading(
       {
@@ -243,6 +312,7 @@ function selectDream(item: (typeof dreamTopics)[number]) {
 
 <template>
   <view class="content-width stack">
+    <text v-if="error" class="notice error">{{ error }}</text>
     <template v-if="view === 'tarot'">
       <view class="workspace">
         <view class="panel stack">
@@ -297,8 +367,8 @@ function selectDream(item: (typeof dreamTopics)[number]) {
             </view>
             <text class="muted small">已选 {{ selected.length }} / {{ spread.positions.length }}</text>
             <view class="actions"
-              ><button class="btn primary" :disabled="!ready" @tap="flip()">翻开所选牌</button
-              ><button class="btn" @tap="flip(true)">随机抽牌</button
+              ><button class="btn primary" :disabled="!ready || pending" @tap="flip()">翻开所选牌</button
+              ><button class="btn"  :disabled="pending" @tap="flip(true)">随机抽牌</button
               ><button class="btn" @tap="shuffle">重新洗牌</button></view
             >
           </template>
@@ -310,11 +380,11 @@ function selectDream(item: (typeof dreamTopics)[number]) {
         <text class="gold">{{ today }}</text>
         <text class="panel-head">{{ daily ? daily.summary : '翻一张今日塔罗' }}</text>
         <text class="muted">{{
-          daily ? daily.sections[0]?.content : '今天的日签生成后，会保留在这台设备上。'
+          daily ? daily.sections[0]?.content : '日签按当天日期保存，同一天可以回看。'
         }}</text>
-        <button v-if="!daily" class="playing-card single-card" @tap="flipDaily"><AppIcon name="ai" /></button>
+        <button v-if="!daily" class="playing-card single-card"  :disabled="pending" @tap="flipDaily"><AppIcon name="ai" /></button>
         <view class="actions">
-          <button v-if="!daily" class="btn primary" @tap="flipDaily">翻开日签</button>
+          <button v-if="!daily" class="btn primary"  :disabled="pending" @tap="flipDaily">翻开日签</button>
           <NavLink v-if="daily" class="btn primary" :to="destination('account', 'result', { id: daily.id })"
             >查看日签</NavLink
           >
@@ -404,7 +474,7 @@ function selectDream(item: (typeof dreamTopics)[number]) {
           </view>
           <text class="muted small">由初爻到上爻录入，可返回继续已有草稿。</text>
           <view class="actions"
-            ><button class="btn primary" :disabled="lines.length !== 6" @tap="resolveHexagram">
+            ><button class="btn primary" :disabled="lines.length !== 6 || pending" @tap="resolveHexagram">
               核对并查看卦象
             </button>
             <button class="btn" :disabled="!lines.length" @tap="lines = lines.slice(0, -1)">
@@ -436,7 +506,7 @@ function selectDream(item: (typeof dreamTopics)[number]) {
         ><view class="panel stack draw-panel"
           ><AppIcon name="oracle" class="reading-art" /><text class="panel-head">一签一问</text
           ><text class="muted">抽一则原创短签，看看值得追问的地方。</text
-          ><button class="btn primary" @tap="drawOracle">抽一支签</button></view
+          ><button class="btn primary"  :disabled="pending" @tap="drawOracle">抽一支签</button></view
         ></view
       >
     </template>
@@ -445,10 +515,10 @@ function selectDream(item: (typeof dreamTopics)[number]) {
         ><view class="panel stack">
           <text class="panel-head">留一个问题（可选）</text
           ><textarea v-model="question" class="field area" maxlength="160" placeholder="你也可以在心中默念" />
-          <button v-if="view === 'dice'" class="btn primary" @tap="rollDice">
+          <button v-if="view === 'dice'" class="btn primary" :disabled="pending" @tap="rollDice">
             {{ drawnDice ? '再掷一次' : '掷三颗星骰' }}
           </button>
-          <button v-else class="btn primary" @tap="openBook">
+          <button v-else class="btn primary" :disabled="pending" @tap="openBook">
             {{ answer ? '再翻一页' : '翻开答案之书' }}
           </button> </view
         ><view class="panel stack draw-panel">
@@ -462,11 +532,11 @@ function selectDream(item: (typeof dreamTopics)[number]) {
             <text
               >{{ planetThemes[drawnDice.planet] }} / {{ signById(drawnDice.sign).element }}象 /
               {{ houses[drawnDice.house] }}</text
-            ><button class="btn" @tap="saveDice">保存并展开解读</button></template
+            ><button class="btn" @tap="saveDice">{{ live ? '查看结果' : '保存并展开解读' }}</button></template
           >
           <template v-else-if="answer"
             ><text class="panel-head">{{ answer }}</text
-            ><button class="btn" @tap="saveAnswer">保存这一页</button></template
+            ><button class="btn" @tap="saveAnswer">{{ live ? '查看结果' : '保存这一页' }}</button></template
           >
           <text v-else class="muted">结果会在这里展开。</text>
         </view></view
@@ -489,8 +559,8 @@ function selectDream(item: (typeof dreamTopics)[number]) {
             label="醒来时的感受"
             :options="['平静', '好奇', '紧张', '欣喜', '困惑'].map((value) => ({ value, label: value }))"
           />
-          <button class="btn primary" :disabled="!dream.trim()" @tap="saveDream">
-            保存并查看示例解读
+          <button class="btn primary" :disabled="!dream.trim() || pending" @tap="saveDream">
+            {{ live ? '保存梦境' : '保存并查看示例解读' }}
           </button> </view
         ><view class="panel stack"
           ><SectionHeading title="常见梦境" />

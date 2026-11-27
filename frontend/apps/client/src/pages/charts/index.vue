@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { Solar } from 'lunar-typescript'
 import AppShell from '../../components/AppShell.vue'
@@ -10,7 +10,10 @@ import SelectField from '../../components/SelectField.vue'
 import DataTable from '../../components/DataTable.vue'
 import SectionHeading from '../../components/SectionHeading.vue'
 import ChartWheel from '../../features/charts/ChartWheel.vue'
-import { availableProfiles, type BirthProfile } from '../../features/account/state'
+import { apiMessage, live, requestId, restoreIdentity } from '../../shared/api'
+import { birthInput, clockOccurrences, timezones } from '../../features/account/birth'
+import { birthCities, astroDisplay } from '../../features/charts/astro'
+import { availableProfiles, refreshPersonal, type BirthProfile } from '../../features/account/state'
 import { birthdaySign, compatibility } from '../../features/catalog/zodiac'
 import { calculateBazi, type BaziReading, type Calendar } from '../../features/charts/bazi'
 import {
@@ -24,7 +27,7 @@ import {
   synastryTypes,
   ziweiFixture,
 } from '../../features/charts/fixtures'
-import { createReading, readings, type ReadingSection } from '../../features/divination/records'
+import { createReading, performReading, readings, removeReading, type Reading, type ReadingSection } from '../../features/divination/records'
 import { confirmAction, destination, go, toast, type Query } from '../../shared/navigation'
 import { dateKey, localStore, offsetDate, parseDate } from '../../shared/storage'
 
@@ -42,7 +45,7 @@ const titles: Record<string, string> = {
   settings: '排盘设置',
 }
 const query = ref<Query>({})
-const view = computed(() => (query.value.view && query.value.view in titles ? query.value.view : 'bazi'))
+const view = computed(() => (query.value.view && Object.prototype.hasOwnProperty.call(titles, query.value.view) ? query.value.view : 'bazi'))
 const settings = localStore('chart-settings', { ...baseSettings })
 const edits = ref({ ...settings.state.value })
 const profileOptions = computed(() =>
@@ -68,9 +71,40 @@ const chart = ref<BaziReading>()
 const error = ref('')
 const calendar = ref<Calendar>('solar')
 const birth = ref('')
+const lunarYear = ref('')
+const lunarMonth = ref('')
+const lunarDay = ref('')
+const lunarYears = Array.from({ length: 199 }, (_, index) => ({ value: String(1901 + index), label: (1901 + index) + ' 年' }))
+const lunarMonths = Array.from({ length: 12 }, (_, index) => ({ value: String(index + 1).padStart(2, '0'), label: (index + 1) + ' 月' }))
+const lunarDays = Array.from({ length: 30 }, (_, index) => ({ value: String(index + 1).padStart(2, '0'), label: (index + 1) + ' 日' }))
+const enteredDate = computed(() => calendar.value === 'solar' ? birth.value :
+  lunarYear.value && lunarMonth.value && lunarDay.value ? [lunarYear.value, lunarMonth.value, lunarDay.value].join('-') : '')
 const time = ref('')
+const occurrence = ref('')
 const city = ref('')
-const timezone = ref('UTC+08:00')
+const timezone = ref('Asia/Shanghai')
+const pending = ref(false)
+const onlineBazi = ref<Reading>()
+const onlineNatal = ref<Reading>()
+const realNatal = computed(() => live && view.value === 'astro' && chartType.value === '本命盘')
+const longitude = ref('')
+const latitude = ref('')
+let previous: { data: string; key: string } | undefined
+
+async function runReading(kind: 'bazi' | 'astro', payload: object) {
+  if (pending.value) return
+  const data = JSON.stringify([kind, payload])
+  if (previous?.data !== data) previous = { data, key: requestId() }
+  pending.value = true
+  error.value = ''
+  try {
+    return await performReading(kind, payload, previous.key)
+  } catch (cause) {
+    error.value = apiMessage(cause)
+  } finally {
+    pending.value = false
+  }
+}
 const timeUnknown = ref(false)
 const leap = ref(false)
 const chartSnapshot = ref('')
@@ -79,8 +113,9 @@ const mansionType = ref('值日')
 const stepSize = computed(() => ({ 大运: 3650, 流年: 365, 流月: 30, 流日: 1, 流时: 0 })[schedule.value] || 1)
 const hour = ref(12)
 
-onLoad((value) => {
+onLoad(async (value) => {
   query.value = value || {}
+  if (live && query.value.id) { await restoreIdentity(); await refreshPersonal() }
   if (query.value.id && availableProfiles.value.some((item) => item.id === query.value.id))
     first.value = query.value.id
   if (query.value.second && availableProfiles.value.some((item) => item.id === query.value.second))
@@ -94,10 +129,12 @@ function fill(item: BirthProfile) {
   calendar.value = 'solar'
   birth.value = item.date
   time.value = item.time
+  occurrence.value = item.occurrence || ''
   city.value = item.city
   timezone.value = item.timezone
   timeUnknown.value = !item.time
   chart.value = undefined
+  onlineBazi.value = undefined
   leap.value = false
 }
 function calculateSource(item: BirthProfile) {
@@ -111,13 +148,29 @@ function calculateSource(item: BirthProfile) {
   })
   return result.ok ? result.reading : undefined
 }
-function calculate() {
+async function calculate() {
   error.value = ''
+  if (live) {
+    if (!enteredDate.value || (!timeUnknown.value && !time.value)) {
+      error.value = '请填入出生日期和时间，或勾选时辰不详。'
+      return
+    }
+    const item = await runReading('bazi', {
+      birth: birthInput(enteredDate.value, timeUnknown.value ? '' : time.value, timezone.value, calendar.value, calendar.value === 'lunar' && leap.value, occurrence.value),
+      late_zi: settings.state.value.lateZi,
+    })
+    if (item?.bazi) {
+      onlineBazi.value = item
+      chart.value = item.bazi
+      chartSnapshot.value = item.sections[0]?.content || ''
+    }
+    return
+  }
   const result = calculateBazi({
     calendar: calendar.value,
-    date: birth.value,
+    date: enteredDate.value,
     time: time.value,
-    leapMonth: leap.value,
+    leapMonth: calendar.value === 'lunar' && leap.value,
     timeUnknown: timeUnknown.value,
     lateZi: settings.state.value.lateZi,
   })
@@ -126,11 +179,12 @@ function calculate() {
     return
   }
   chart.value = result.reading
-  chartSnapshot.value = [birth.value, timeUnknown.value ? '时辰不详' : time.value, timezone.value, city.value]
+  chartSnapshot.value = [enteredDate.value, timeUnknown.value ? '时辰不详' : time.value, timezone.value, city.value]
     .filter(Boolean)
     .join(' · ')
 }
 function saveBazi() {
+  if (onlineBazi.value) return go(destination('account', 'result', { id: onlineBazi.value.id }))
   if (!chart.value) return
   sendReading(
     'bazi',
@@ -193,7 +247,41 @@ const seed = computed(() =>
     ].join('|'),
   ),
 )
-const astroData = computed(() => chartFixture(seed.value, settings.state.value.extras))
+const natal = computed(() => realNatal.value ? onlineNatal.value?.natal : undefined)
+const astroData = computed(() => natal.value
+  ? astroDisplay(natal.value) : chartFixture(seed.value, settings.state.value.extras))
+
+watch([firstProfile, realNatal], () => {
+  onlineNatal.value = undefined
+  if (!realNatal.value) return
+  const knownCity = birthCities[firstProfile.value.city.replace(/市$/, '').trim()]
+  longitude.value = knownCity ? String(knownCity[0]) : ''
+  latitude.value = knownCity ? String(knownCity[1]) : ''
+}, { immediate: true })
+
+async function calculateNatal() {
+  const person = firstProfile.value
+  if (!person.time) { error.value = '本命盘需要准确的出生时刻，请先补充档案。'; return }
+  if (!longitude.value.trim() || !latitude.value.trim()
+    || !Number.isFinite(Number(longitude.value)) || !Number.isFinite(Number(latitude.value))) {
+    error.value = '请输入出生地经纬度。'
+    return
+  }
+  const orb = Number(settings.state.value.orb)
+  if (orb < 1 || orb > 10 || !Number.isFinite(orb)) {
+    error.value = '请在排盘设置中把相位容许度调整为 1–10°。'
+    return
+  }
+  const house = { 普拉西德: 'placidus', 整宫制: 'whole_sign', 等宫制: 'equal' }[settings.state.value.house] || 'placidus'
+  const input = {
+    birth: birthInput(person.date, person.time, person.timezone, 'solar', false, person.occurrence),
+    longitude: Number(longitude.value), latitude: Number(latitude.value), house_system: house,
+    zodiac: settings.state.value.zodiac === '恒星黄道' ? 'sidereal' : 'tropical',
+    extras: settings.state.value.extras, orb,
+  }
+  const item = await runReading('astro', input)
+  if (item && realNatal.value && firstProfile.value.id === person.id) onlineNatal.value = item
+}
 const secondData = computed(() =>
   chartFixture(fixtureSeed(secondProfile.value.date + chartType.value), settings.state.value.extras),
 )
@@ -230,6 +318,10 @@ function compare() {
   compared.value = true
 }
 function saveChart() {
+  if (realNatal.value) {
+    if (onlineNatal.value) go(destination('account', 'result', { id: onlineNatal.value.id }))
+    return
+  }
   if (isPair.value && !compared.value) return
   const topic = isPair.value
     ? firstProfile.value.name + ' × ' + secondProfile.value.name
@@ -272,7 +364,10 @@ function saveChart() {
 }
 function saveSettings() {
   const orb = Number(edits.value.orb)
-  if (!Number.isFinite(orb) || orb < 0 || orb > 20) return toast('容许度请填 0–20°。')
+  const [min, max] = live ? [1, 10] : [0, 20]
+  if (!edits.value.orb.trim() || !Number.isFinite(orb) || orb < min || orb > max) {
+    return toast('容许度请填 ' + min + '–' + max + '°。')
+  }
   if (settings.write({ ...edits.value })) toast('排盘设置已保存。')
 }
 
@@ -321,11 +416,11 @@ function jumpToToday() {
             ><text>晚子时按次日换日</text
             ><AppSwitch label="晚子时按次日换日" :checked="edits.lateZi" @change="edits.lateZi = $event"
           /></view>
-          <view class="switch-row"
+          <view v-if="!live" class="switch-row"
             ><text>真太阳时参数预览</text
             ><AppSwitch label="真太阳时参数预览" :checked="edits.solar" @change="edits.solar = $event"
           /></view>
-          <text class="notice">真太阳时当前为 Mock 设置，八字基础盘使用当地钟表时间。</text>
+          <text class="notice">八字基础盘使用当地钟表时间。</text>
           <view class="actions"
             ><button class="btn primary" @tap="saveSettings">保存设置</button
             ><button class="btn" @tap="edits = { ...baseSettings }">恢复默认</button></view
@@ -370,7 +465,7 @@ function jumpToToday() {
               class="link"
               @tap="
                 confirmAction('删除合盘', '删除这条本机合盘记录。', () =>
-                  readings.write(readings.state.value.filter((entry) => entry.id !== item.id)),
+                  removeReading(item.id).catch((cause) => toast(apiMessage(cause))),
                 )
               "
             >
@@ -398,7 +493,12 @@ function jumpToToday() {
                 农历
               </button></view
             >
-            <DateField v-model="birth" label="出生日期" />
+            <DateField v-if="calendar === 'solar'" v-model="birth" label="公历出生日期" start="1901-01-01" />
+            <view v-else class="cols-3">
+              <SelectField v-model="lunarYear" label="农历年" :options="lunarYears" />
+              <SelectField v-model="lunarMonth" label="农历月" :options="lunarMonths" />
+              <SelectField v-model="lunarDay" label="农历日" :options="lunarDays" />
+            </view>
             <view v-if="calendar === 'lunar'" class="switch-row"
               ><text>闰月</text><AppSwitch label="闰月" :checked="leap" @change="leap = $event"
             /></view>
@@ -415,21 +515,23 @@ function jumpToToday() {
               v-model="timezone"
               label="时区"
               :options="
-                ['UTC+08:00', 'UTC+00:00', 'UTC+09:00', 'UTC-05:00'].map((value) => ({ value, label: value }))
+                timezones
               "
             />
+            <SelectField v-if="live && !timeUnknown && time" v-model="occurrence"
+              label="夏令时回拨（出生时刻出现两次时填写）" :options="clockOccurrences" />
             <NavLink class="link" :to="destination('charts', 'settings')">晚子时与进阶设置 ›</NavLink>
             <text v-if="error" class="error">{{ error }}</text
-            ><button class="btn primary" @tap="calculate">开始排盘</button>
+            ><button class="btn primary" :disabled="pending" @tap="calculate">开始排盘</button>
           </view>
           <view class="panel stack">
             <text class="panel-head">四柱与五行</text>
             <template v-if="chart">
               <text class="muted">{{ chartSnapshot }}</text
-              ><text class="gold">日主 · {{ chart.pillars[2]?.text.slice(0, 1) }}</text>
+              ><text class="gold">日主 · {{ chart.pillars[2]?.text === '待确定' ? '待确定' : chart.pillars[2]?.text.slice(0, 1) }}</text>
               <DataTable :headings="['项目', ...chart.pillars.map((item) => item.label)]" :rows="dataTable" />
               <view class="actions"
-                ><button class="btn primary" @tap="saveBazi">保存命盘</button>
+                ><button class="btn primary" @tap="saveBazi">{{ onlineBazi ? '查看命盘记录' : '保存命盘' }}</button>
                 <NavLink class="btn" :to="destination('charts', 'cycles', { id: first })">八字流盘</NavLink>
                 <NavLink class="btn" :to="destination('charts', 'match-bazi', { id: first })"
                   >八字合盘</NavLink
@@ -489,20 +591,30 @@ function jumpToToday() {
               ><text class="field-label">重置地点</text
               ><input v-model="place" class="field" placeholder="输入城市"
             /></view>
-            <DateField v-if="!isPair || astro" v-model="timePoint" label="查看日期" />
-            <view v-if="!isPair || astro" class="actions"
+            <DateField v-if="!realNatal && (!isPair || astro)" v-model="timePoint" label="查看日期" />
+            <view v-if="!realNatal && (!isPair || astro)" class="actions"
               ><button class="btn" @tap="advance(-1)">‹ 上一段</button
               ><button class="btn" @tap="jumpToToday">回今天</button
               ><button class="btn" @tap="advance(1)">下一段 ›</button></view
             >
-            <view v-if="astro && !isPair" class="switch-row"
+            <view v-if="astro && !isPair && !realNatal" class="switch-row"
               ><text>双盘对照</text><AppSwitch label="双盘对照" :checked="dual" @change="dual = $event"
             /></view>
             <button v-if="isPair" class="btn primary" @tap="compare">查看双方对照</button>
+            <template v-if="realNatal">
+              <view class="cols-2">
+                <view><text class="field-label">出生地经度</text><input v-model="longitude" class="field" placeholder="东经为正" /></view>
+                <view><text class="field-label">出生地纬度</text><input v-model="latitude" class="field" placeholder="北纬为正" /></view>
+              </view>
+              <text class="muted small">常见城市预填市中心坐标，可改为实际出生地点。</text>
+              <text v-if="error" class="error">{{ error }}</text>
+              <button class="btn primary" :disabled="pending" @tap="calculateNatal">{{ pending ? '正在排盘…' : '计算本命盘' }}</button>
+            </template>
             <NavLink class="link" :to="destination('charts', 'settings')">排盘设置 ›</NavLink>
           </view>
           <view class="stack">
             <view v-if="isPair && !compared" class="panel muted">选定双方档案后，打开盘面与关系摘要。</view>
+            <view v-else-if="realNatal && !natal" class="panel muted">选择出生档案并确认经纬度后，可计算星体、宫位和相位。</view>
             <template v-else-if="astro">
               <view class="panel stack">
                 <SectionHeading
@@ -510,11 +622,14 @@ function jumpToToday() {
                   :to="destination('charts', 'knowledge')"
                   action="盘面术语"
                 />
-                <text class="muted small">示例盘面 · {{ timePoint }}</text>
+                <text class="muted small">{{ natal
+                  ? '上升 ' + natal.ascendant.toFixed(2) + '° · 天顶 ' + natal.midheaven.toFixed(2) + '° · ' + settings.state.value.house
+                  : '示例盘面 · ' + timePoint }}</text>
                 <ChartWheel
                   :title="chartType"
                   :data="astroData"
-                  :second="dual || isPair ? secondData : undefined"
+                  :second="!realNatal && (dual || isPair) ? secondData : undefined"
+                  :cusps="natal?.cusps"
                 />
                 <DataTable
                   :headings="['行星', '星座', '度数', '宫位', '相位', '状态']"
@@ -522,7 +637,7 @@ function jumpToToday() {
                     astroData.map((item) => [
                       item.planet,
                       useText ? item.sign.name : item.sign.glyph,
-                      (item.degree % 30) + '°',
+                      (item.degree % 30).toFixed(2) + '°',
                       item.house,
                       useText ? item.aspect : '—',
                       item.retrograde ? '逆行' : '顺行',

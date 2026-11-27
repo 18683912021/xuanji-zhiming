@@ -1,0 +1,56 @@
+name: xuanji-backend
+
+services:
+  db:
+    image: pgvector/pgvector:pg17-trixie
+    environment:
+      POSTGRES_DB: xuanji
+      POSTGRES_USER: xuanji
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in backend/.env}
+    command:
+      - postgres
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - max_connections=30
+      - -c
+      - work_mem=2MB
+      - -c
+      - maintenance_work_mem=24MB
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "xuanji", "-d", "xuanji"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 384m
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    logging: &logging
+      options:
+        max-size: "10m"
+        max-file: "2"
+
+  api:
+    build:
+      context: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://xuanji:${POSTGRES_PASSWORD}@db:5432/xuanji
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health/ready', timeout=2)"]
+      interval: 15s
+      timeout: 3s
+      retries: 4
+      start_period: 10s
+    mem_limit: 320m
+    restart: unless-stopped
+    logging: *logging
+
+volumes:
+  postgres_data:

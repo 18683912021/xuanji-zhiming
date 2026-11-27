@@ -1,3 +1,4 @@
+import { accountStore, live } from '../../shared/api'
 import { computed } from 'vue'
 import { localStore, makeId, dateKey, readPreviousWebData } from '../../shared/storage'
 import { destination, type Destination } from '../../shared/navigation'
@@ -18,7 +19,7 @@ export const officialRoles: Role[] = [
     id: 'astrologer',
     name: 'AI 占星师',
     glyph: '⊙',
-    specialty: '星盘、合盘、行运与星骰',
+    specialty: '西洋本命盘与星骰',
     opening: '你想先了解某个占星概念，还是带一份盘面来一起看？',
     questions: ['怎样理解第七宫？', '可以从这份盘面看哪里？'],
   },
@@ -50,12 +51,12 @@ export const officialRoles: Role[] = [
     id: 'report',
     name: '报告助手',
     glyph: '▧',
-    specialty: '八字、紫微与深度报告',
+    specialty: '八字与西洋本命盘报告',
     opening: '可以打开一次体验或报告，我们一起看其中的依据。',
     questions: ['这份报告的主要结论是什么？', '哪些内容需要再确认？'],
   },
 ]
-export const privateRoles = localStore<Role[]>('roles', [])
+export const privateRoles = accountStore<Role[]>('roles', [])
 export const roles = computed(() => [...officialRoles, ...privateRoles.state.value])
 export function roleForReading(kind?: string) {
   if (kind === 'daily' || kind === 'tarot') return 'tarot'
@@ -79,6 +80,9 @@ export interface Message {
   answer?: string
   context?: Context
   status: 'complete' | 'stopped' | 'failed'
+  remote?: boolean
+  task?: 'general' | 'reading'
+  citations?: { id: string; title: string; source: string; version: string }[]
 }
 export interface Session {
   id: string
@@ -88,6 +92,7 @@ export interface Session {
   context?: Context
   messages: Message[]
   updated: string
+  online?: boolean
 }
 function previousSessions(): Session[] {
   const previous = readPreviousWebData<
@@ -118,8 +123,8 @@ function previousSessions(): Session[] {
   })
 }
 
-export const sessions = localStore<Session[]>('sessions', previousSessions())
-export const credits = localStore('credits', { day: dateKey(), ai: 8, reports: 3 })
+export const sessions = accountStore<Session[]>('sessions', live ? [] : previousSessions())
+export const credits = accountStore('credits', { day: dateKey(), ai: 8, reports: 3 })
 export const remaining = computed(() =>
   credits.state.value.day === dateKey()
     ? credits.state.value
@@ -175,8 +180,9 @@ export interface Report {
   source?: Context
   sections: ReadingSection[]
   createdAt: string
+  online?: boolean
 }
-export const reports = localStore<Report[]>('reports', [])
+export const reports = accountStore<Report[]>('reports', [])
 
 export function readingContext(id?: string): Context | undefined {
   const item = readings.state.value.find((reading) => reading.id === id)

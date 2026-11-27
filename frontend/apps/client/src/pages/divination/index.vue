@@ -25,7 +25,7 @@ const titles: Record<string, string> = {
   palm: '手相文化解读',
   face: '面相文化解读',
 }
-const view = computed(() => (query.value.view && query.value.view in titles ? query.value.view : 'tarot'))
+const view = computed(() => (query.value.view && Object.prototype.hasOwnProperty.call(titles, query.value.view) ? query.value.view : 'tarot'))
 </script>
 <template>
   <AppShell section="divination" :title="titles[view]" detail>

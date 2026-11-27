@@ -4,11 +4,15 @@ import NavLink from './NavLink.vue'
 import type { Destination } from '../shared/navigation'
 
 defineOptions({ options: { virtualHost: true } })
-defineProps<{ title: string; description: string; glyph: string; to: Destination; feature?: boolean }>()
+defineProps<{ title: string; description: string; glyph: string; to: Destination; feature?: boolean; plain?: boolean }>()
 </script>
 
 <template>
-  <NavLink class="tool-card" :class="{ 'feature-card': feature, 'dream-card': to.view === 'dream' }" :to="to">
+  <NavLink
+    class="tool-card"
+    :class="{ 'feature-card': feature, 'dream-card': to.view === 'dream', 'plain-card': plain }"
+    :to="to"
+  >
     <AppIcon :glyph="glyph" class="tool-art" />
     <view class="tool-copy">
       <text class="tool-title">{{ title }}</text>

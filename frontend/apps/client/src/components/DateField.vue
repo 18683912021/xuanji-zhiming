@@ -1,5 +1,5 @@
 <script setup lang="ts">
-defineProps<{ label: string; modelValue: string; mode?: 'date' | 'time'; end?: string }>()
+defineProps<{ label: string; modelValue: string; mode?: 'date' | 'time'; start?: string; end?: string }>()
 defineOptions({ options: { virtualHost: true } })
 
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
@@ -13,7 +13,7 @@ function change(event: { detail: { value: string } }) {
     <picker
       :mode="mode || 'date'"
       :value="modelValue"
-      :start="mode === 'time' ? undefined : '1900-01-01'"
+      :start="mode === 'time' ? undefined : start || '1900-01-01'"
       :end="end || (mode === 'time' ? undefined : '2099-12-31')"
       @change="change"
     >
